@@ -26,10 +26,11 @@ class Batch {
       const chunkEntities = await query.skip(skip).take(chunkSize).getMany();
 
       skip += chunkSize;
-      index++;
       count = chunkEntities.length;
 
       await callback(chunkEntities, index);
+
+      index++;
     } while (count === chunkSize);
   }
 }
