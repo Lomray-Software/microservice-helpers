@@ -3,6 +3,7 @@ import TypeormJsonQuery from '@lomray/typeorm-json-query';
 import { expect } from 'chai';
 import sinon from 'sinon';
 import { SelectQueryBuilder } from 'typeorm/query-builder/SelectQueryBuilder';
+import CompositeTestEntity from '@__mocks__/entities/composite-test-entity';
 import TestEntity from '@__mocks__/entities/test-entity';
 import { TypeormMock } from '@mocks/index';
 import type { CreateOutputParams } from '@services/endpoint';
@@ -29,6 +30,7 @@ describe('services/endpoint', () => {
   const handler = sandbox.stub();
   const entity = { id: 1, param: 'test' };
   const repository = TypeormMock.entityManager.getRepository(TestEntity);
+  const compositeTestRepository = TypeormMock.entityManager.getRepository(CompositeTestEntity);
   const emptyConditionMessage = 'condition is empty';
   const entityNotFoundMessage = 'Entity not found';
 
@@ -438,6 +440,95 @@ describe('services/endpoint', () => {
       });
 
       expect(await waitResult(result)).to.throw('Unknown');
+    });
+
+    it('handler - should throw error if entity has composition key and exist', async () => {
+      // Mock find duplicated entity
+      TypeormMock.queryBuilder.getCount.resolves(1);
+
+      const fields = {
+        id1: 'id-1',
+        id2: 'id-2',
+        param: 'param',
+      } as CompositeTestEntity;
+
+      expect(
+        await waitResult(
+          Endpoint.defaultHandler.create<CompositeTestEntity>({
+            fields,
+            repository: compositeTestRepository,
+          }),
+        ),
+      ).to.throw('One or more entities already exist.');
+    });
+
+    it('handler - should throw error if entity has composition key and exist with the multiply entities', async () => {
+      // Mock find duplicated entity
+      TypeormMock.queryBuilder.getCount.resolves(1);
+
+      const fields = [
+        {
+          id1: 'id-1',
+          id2: 'id-2',
+          param: 'param',
+        },
+        {
+          id1: 'id-12',
+          id2: 'id-22',
+          param: 'param2',
+        },
+      ] as CompositeTestEntity[];
+
+      expect(
+        await waitResult(
+          Endpoint.defaultHandler.create({
+            fields,
+            repository: compositeTestRepository,
+            isAllowMultiple: true,
+          }),
+        ),
+      ).to.throw('One or more entities already exist.');
+    });
+
+    it("handler - should correctly create composite entity if db doesn't contain duplicate", async () => {
+      TypeormMock.queryBuilder.getCount.resolves(0);
+
+      const fields = {
+        id1: 'id-1',
+        id2: 'id-2',
+        param: 'param',
+      } as CompositeTestEntity;
+
+      await waitResult(
+        Endpoint.defaultHandler.create({
+          fields,
+          repository: compositeTestRepository,
+        }),
+      );
+
+      const [, [passedFields], passedOptions] = TypeormMock.entityManager.save.firstCall.args;
+
+      expect(passedFields).to.deep.equal(fields);
+      expect(passedOptions).to.have.property('chunk');
+    });
+
+    it("handler - get composite query count should be called if entity isn't have composite key", async () => {
+      TypeormMock.queryBuilder.getCount.resolves(0);
+
+      const fields = {
+        id: 1,
+        param: 'param',
+      } as TestEntity;
+
+      await waitResult(
+        Endpoint.defaultHandler.create({
+          fields,
+          repository,
+        }),
+      );
+
+      expect(TypeormMock.queryBuilder.getCount).to.not.called;
+      expect(TypeormMock.entityManager.save).to.calledOnce;
     });
 
     it('should run default handler metadata: create', () => {

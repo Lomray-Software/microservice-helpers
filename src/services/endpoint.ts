@@ -21,6 +21,7 @@ enum CRUD_EXCEPTION_CODE {
   FAILED_DELETE = -33485,
   FAILED_RESTORE = -33486,
   ENTITY_NOT_FOUND = -33487,
+  ENTITY_ALREADY_EXIST = -33488,
 }
 
 export type Constructable<TParams = any> = new (...args: any[]) => TParams;
@@ -679,6 +680,24 @@ const createDefaultHandler = async <TEntity, TResult = never>({
       message: 'Validation failed for one or more entities.',
       payload: isArray ? errors : errors[0],
     });
+  }
+
+  /**
+   * Is entity contain composite primary key
+   */
+  if (repository.metadata.primaryColumns.length > 1) {
+    const primaryKeys = entities.map((entity) => repository.metadata.getEntityIdMap(entity));
+
+    /**
+     * If provided duplicated entity
+     */
+    if ((await repository.createQueryBuilder('entity').where(primaryKeys).getCount()) !== 0) {
+      throw new BaseException({
+        code: CRUD_EXCEPTION_CODE.ENTITY_ALREADY_EXIST,
+        status: 409,
+        message: 'One or more entities already exist.',
+      });
+    }
   }
 
   try {
