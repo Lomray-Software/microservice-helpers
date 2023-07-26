@@ -2,6 +2,8 @@ import { SelectQueryBuilder } from 'typeorm';
 
 export interface IBatchFindOptions {
   chunkSize?: number;
+  // Timeout in ms
+  timeout?: number;
 }
 
 /**
@@ -16,11 +18,18 @@ class Batch {
     callback: (entities: TEntity[], index: number) => Promise<void> | void,
     options: IBatchFindOptions = {},
   ): Promise<void> {
-    const { chunkSize = 50 } = options;
+    const { chunkSize = 50, timeout } = options;
 
     let skip = 0;
     let count = 0;
     let index = 0;
+    let exitProcessTime: number | null = null;
+
+    if (timeout) {
+      exitProcessTime = Date.now() + timeout;
+    }
+
+    const isTimeoutNotExceeded = exitProcessTime ? exitProcessTime > Date.now() : true;
 
     do {
       const chunkEntities = await query.skip(skip).take(chunkSize).getMany();
@@ -31,7 +40,7 @@ class Batch {
       await callback(chunkEntities, index);
 
       index++;
-    } while (count === chunkSize);
+    } while (count === chunkSize && isTimeoutNotExceeded);
   }
 }
 

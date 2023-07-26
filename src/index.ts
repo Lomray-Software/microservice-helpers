@@ -50,6 +50,8 @@ export { default as Api } from '@services/api';
 
 export type { IApiParams } from '@services/api';
 
+export { default as Batch } from '@services/batch';
+
 export * from '@entities/ijson-query-filter';
 
 export { default as MetaEndpoint } from '@methods/meta';
