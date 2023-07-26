@@ -29,7 +29,7 @@ class Batch {
       exitProcessTime = Date.now() + timeout;
     }
 
-    const isTimeoutNotExceeded = exitProcessTime ? exitProcessTime > Date.now() : true;
+    const isTimeoutNotExceeded = !exitProcessTime || exitProcessTime > Date.now();
 
     do {
       const chunkEntities = await query.skip(skip).take(chunkSize).getMany();
