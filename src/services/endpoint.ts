@@ -127,6 +127,7 @@ class ListRequestParams<TEntity> {
   query?: IJsonQuery<TEntity>;
 
   @IsBoolean()
+  @IsUndefinable()
   hasRemoved?: boolean;
 }
 
@@ -147,6 +148,10 @@ class ViewRequestParams<TEntity> {
   @IsObject()
   @Type(() => IJsonQueryFilter)
   query: IJsonQuery<TEntity>;
+
+  @IsBoolean()
+  @IsUndefinable()
+  hasRemoved?: boolean;
 }
 
 class ViewOutputParams<TEntity> {
@@ -732,7 +737,7 @@ const createDefaultHandler = async <TEntity, TResult = never>({
  */
 const viewDefaultHandler = async <TEntity>(
   query: SelectQueryBuilder<TEntity>,
-  { cache = 0 } = {},
+  { cache = 0, hasRemoved = false } = {},
 ): Promise<ViewOutputParams<TEntity>> => {
   if (hasEmptyCondition(query)) {
     throw new BaseException({
@@ -740,6 +745,10 @@ const viewDefaultHandler = async <TEntity>(
       status: 422,
       message: 'Entity view condition is empty.',
     });
+  }
+
+  if (hasRemoved) {
+    query.withDeleted();
   }
 
   if (cache) {
@@ -1243,13 +1252,15 @@ class Endpoint {
           ...queryOptions,
         });
         const result = await handler(typeQuery, params, options);
+        const { hasRemoved } = params;
+        const defaultParams = { hasRemoved, cache };
 
         if (result instanceof TypeormJsonQuery) {
-          return Endpoint.defaultHandler.view(result.toQuery(), { cache });
+          return Endpoint.defaultHandler.view(result.toQuery(), defaultParams);
         }
 
         if (result instanceof SelectQueryBuilder) {
-          return Endpoint.defaultHandler.view(result, { cache });
+          return Endpoint.defaultHandler.view(result, defaultParams);
         }
 
         return result;
