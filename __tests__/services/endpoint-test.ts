@@ -145,6 +145,23 @@ describe('services/endpoint', () => {
       expect(result).to.deep.equal({ count: 0 });
     });
 
+    it('handler - should return non-raw count entities', async () => {
+      const qb = repository.createQueryBuilder();
+      const result = await Endpoint.defaultHandler.count(qb, {
+        isAllowDistinct: false,
+      });
+
+      const [query, params] = qb.getQueryAndParameters();
+
+      expect(query).to.equal(
+        'SELECT "TestEntity"."id" AS "TestEntity_id", "TestEntity"."param" AS "TestEntity_param", "TestEntity"."param2" AS "TestEntity_param2" FROM "test_entity" "TestEntity"',
+      );
+      expect(params).to.deep.equal([]);
+      expect(TypeormMock.queryBuilder.getCount).to.be.calledOnce;
+      expect(TypeormMock.queryBuilder.getRawOne).to.be.not.called;
+      expect(result).to.deep.equal({ count: 0 });
+    });
+
     it('handler - should return raw count entities', async () => {
       const qb = repository.createQueryBuilder();
       const result = await Endpoint.defaultHandler.count(qb, {
