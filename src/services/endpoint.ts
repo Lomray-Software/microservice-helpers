@@ -118,7 +118,7 @@ export interface IGetQueryListParams extends Pick<IGetQueryParams, 'hasRemoved'>
   isWithCount?: boolean; // Default false
   isParallel?: boolean; // Default false
   cache?: {
-    listCache?: number; // Default 0,
+    listCache?: number; // Default 0
     countCache?: number; // Default 0
   };
 }
