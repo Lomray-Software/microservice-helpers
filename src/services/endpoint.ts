@@ -615,7 +615,7 @@ const getQueryCount = async <TEntity>(
 
   return {
     // Returns raw count if distinct enabled
-    count: distinct ? (await query.getRawOne())?.count : await query.getCount(),
+    count: distinct ? (await query.getRawOne())?.count || 0 : await query.getCount(),
   };
 };
 
