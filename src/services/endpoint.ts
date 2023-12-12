@@ -113,7 +113,6 @@ export interface IGetQueryParams {
 }
 
 export interface IGetQueryCountParams extends IGetQueryParams {
-  distinct?: string;
   isAllowDistinct?: boolean;
 }
 
@@ -601,9 +600,9 @@ const defaultHandler = <TEntity>(query: TypeormJsonQuery<TEntity>): TypeormJsonQ
  */
 const getQueryCount = async <TEntity>(
   query: SelectQueryBuilder<TEntity>,
-  { hasRemoved = false, cache = 0, isAllowDistinct = false, distinct }: IGetQueryCountParams = {},
+  { hasRemoved = false, cache = 0, isAllowDistinct = false }: IGetQueryCountParams = {},
 ): Promise<CountOutputParams> => {
-  if (!isAllowDistinct && distinct) {
+  if (!isAllowDistinct) {
     throw new BaseException({
       code: CRUD_EXCEPTION_CODE.DISTINCT_SELECT_FORBIDDEN,
       status: 422,
@@ -615,19 +614,33 @@ const getQueryCount = async <TEntity>(
     query.withDeleted();
   }
 
-  // Apply distinct select
-  if (distinct) {
-    query.select(`COUNT(DISTINCT "${distinct}")::integer`, 'count');
+  const isDistinctApplied = query.getQuery().includes('DISTINCT');
+
+  // Check if distinct applied
+  if (isDistinctApplied) {
+    if (!isAllowDistinct) {
+      throw new BaseException({
+        code: CRUD_EXCEPTION_CODE.DISTINCT_SELECT_FORBIDDEN,
+        status: 422,
+        message: 'Distinct select is not allowed.',
+      });
+    }
+
+    // @TODO: add tests
+    query.select(`SELECT COUNT(*)::integer AS count FROM (${query.getQuery()}) AS subquery;`);
   }
 
   if (cache) {
     // Disable is only where condition
-    query.cache(getCrudCacheKey(query, CACHE_KEYS.count, { hasOnlyWhere: !distinct }), cache);
+    query.cache(
+      getCrudCacheKey(query, CACHE_KEYS.count, { hasOnlyWhere: !isDistinctApplied }),
+      cache,
+    );
   }
 
   return {
     // Returns raw count if distinct enabled
-    count: distinct ? (await query.getRawOne())?.count || 0 : await query.getCount(),
+    count: isDistinctApplied ? (await query.getRawOne())?.count || 0 : await query.getCount(),
   };
 };
 
@@ -1181,13 +1194,11 @@ class Endpoint {
           ...queryOptions,
         });
         const result = await handler(typeQuery, params, options);
-        const { hasRemoved, query: iJsonQuery } = params;
+        const { hasRemoved } = params;
         const defaultParams = {
           hasRemoved,
           cache,
           isAllowDistinct,
-          // Check and cast to string from TEntity field
-          ...(typeof iJsonQuery?.distinct === 'string' ? { distinct: iJsonQuery.distinct } : {}),
         };
 
         if (result instanceof TypeormJsonQuery) {
