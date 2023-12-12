@@ -1169,13 +1169,12 @@ class Endpoint {
           ...queryOptions,
         });
         const result = await handler(typeQuery, params, options);
-        const { hasRemoved } = params;
+        const { hasRemoved, query: iJsonQuery } = params;
         const defaultParams = {
           hasRemoved,
           cache,
-          // @TODO: update microservices types
-          // @ts-ignore
-          distinct: params?.query?.distinct,
+          // Check and cast to string from TEntity field
+          ...(typeof iJsonQuery?.distinct === 'string' ? { distinct: iJsonQuery.distinct } : {}),
         };
 
         if (result instanceof TypeormJsonQuery) {
