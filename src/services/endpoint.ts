@@ -22,6 +22,7 @@ enum CRUD_EXCEPTION_CODE {
   FAILED_RESTORE = -33486,
   ENTITY_NOT_FOUND = -33487,
   ENTITY_ALREADY_EXIST = -33488,
+  DISTINCT_SELECT_FORBIDDEN = -33489,
 }
 
 export type Constructable<TParams = any> = new (...args: any[]) => TParams;
@@ -97,6 +98,7 @@ export type IRequestPayload<TEntity, TPayload> = TPayload & {
         isParallel?: boolean;
         shouldReturnEntity?: boolean;
         shouldResetCache?: boolean;
+        isAllowDistinct?: boolean;
       };
       options?: Partial<ITypeormJsonQueryOptions>;
       query?: IJsonQuery<TEntity>;
@@ -112,6 +114,7 @@ export interface IGetQueryParams {
 
 export interface IGetQueryCountParams extends IGetQueryParams {
   distinct?: string;
+  isAllowDistinct?: boolean;
 }
 
 export interface IGetQueryListParams extends Pick<IGetQueryParams, 'hasRemoved'> {
@@ -334,6 +337,7 @@ export interface ICrudParams<TEntity, TParams = ObjectLiteral, TResult = ObjectL
 export interface ICountParams<TEntity, TParams, TResult>
   extends ICrudParams<TEntity, TParams, TResult> {
   cache?: number;
+  isAllowDistinct?: boolean;
 }
 
 export interface IListParams<TEntity, TParams, TResult>
@@ -597,8 +601,16 @@ const defaultHandler = <TEntity>(query: TypeormJsonQuery<TEntity>): TypeormJsonQ
  */
 const getQueryCount = async <TEntity>(
   query: SelectQueryBuilder<TEntity>,
-  { hasRemoved = false, cache = 0, distinct }: IGetQueryCountParams = {},
+  { hasRemoved = false, cache = 0, isAllowDistinct, distinct }: IGetQueryCountParams = {},
 ): Promise<CountOutputParams> => {
+  if (!isAllowDistinct && distinct) {
+    throw new BaseException({
+      code: CRUD_EXCEPTION_CODE.DISTINCT_SELECT_FORBIDDEN,
+      status: 422,
+      message: 'Distinct select is not allowed.',
+    });
+  }
+
   if (hasRemoved) {
     query.withDeleted();
   }
@@ -1161,7 +1173,7 @@ class Endpoint {
   > {
     const countHandler: IReturn<TEntity, TParams, TPayload, CountOutputParams | TResult> =
       async function (params, options) {
-        const { repository, queryOptions, cache } = countOptions();
+        const { repository, queryOptions, cache, isAllowDistinct } = countOptions();
         const typeQuery = createTypeQuery(repository.createQueryBuilder(), params, {
           relationOptions: ['*'],
           isDisableOrderBy: true,
@@ -1173,6 +1185,7 @@ class Endpoint {
         const defaultParams = {
           hasRemoved,
           cache,
+          isAllowDistinct,
           // Check and cast to string from TEntity field
           ...(typeof iJsonQuery?.distinct === 'string' ? { distinct: iJsonQuery.distinct } : {}),
         };
