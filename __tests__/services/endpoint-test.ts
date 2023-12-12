@@ -147,7 +147,10 @@ describe('services/endpoint', () => {
 
     it('handler - should return raw count entities', async () => {
       const qb = repository.createQueryBuilder();
-      const result = await Endpoint.defaultHandler.count(qb, { distinct: 'param' });
+      const result = await Endpoint.defaultHandler.count(qb, {
+        distinct: 'param',
+        isAllowDistinct: true,
+      });
 
       const [query, params] = qb.getQueryAndParameters();
 
@@ -158,6 +161,32 @@ describe('services/endpoint', () => {
       expect(TypeormMock.queryBuilder.getCount).to.be.not.called;
       expect(TypeormMock.queryBuilder.getRawOne).to.be.calledOnce;
       expect(result).to.deep.equal({ count: 0 });
+    });
+
+    it('handler - should throw error distinct is now allowed', async () => {
+      expect(
+        await waitResult(
+          Endpoint.defaultHandler.count(repository.createQueryBuilder(), { distinct: 'param' }),
+        ),
+      ).to.throw('Distinct select is not allowed.');
+    });
+
+    it('should call default count handler with allow distinct', async () => {
+      const countHandlerWithDistinct = Endpoint.count?.(
+        () => ({ repository, isAllowDistinct: true }),
+        handler,
+      );
+      const defaultHandlerStubWithDistinct = sandbox.stub(Endpoint.defaultHandler, 'count');
+
+      await countHandlerWithDistinct({}, endpointOptions);
+
+      defaultHandlerStubWithDistinct.restore();
+
+      const [, params] = defaultHandlerStubWithDistinct.firstCall.args;
+
+      expect(params?.hasRemoved).to.undefined;
+      expect(params?.cache).to.undefined;
+      expect(params?.isAllowDistinct).to.true;
     });
 
     it('should run default count handler with query builder: typeorm case - cache', async () => {
