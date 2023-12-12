@@ -601,7 +601,7 @@ const defaultHandler = <TEntity>(query: TypeormJsonQuery<TEntity>): TypeormJsonQ
  */
 const getQueryCount = async <TEntity>(
   query: SelectQueryBuilder<TEntity>,
-  { hasRemoved = false, cache = 0, isAllowDistinct, distinct }: IGetQueryCountParams = {},
+  { hasRemoved = false, cache = 0, isAllowDistinct = false, distinct }: IGetQueryCountParams = {},
 ): Promise<CountOutputParams> => {
   if (!isAllowDistinct && distinct) {
     throw new BaseException({
