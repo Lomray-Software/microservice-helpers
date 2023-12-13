@@ -7,7 +7,7 @@ import TypeormJsonQuery from '@lomray/typeorm-json-query';
 import { Type, plainToInstance } from 'class-transformer';
 import { IsArray, IsBoolean, IsNumber, IsObject, validate } from 'class-validator';
 import { JSONSchema } from 'class-validator-jsonschema';
-import { DeleteResult } from 'typeorm';
+import { DeleteResult, getManager } from 'typeorm';
 import { SelectQueryBuilder } from 'typeorm/query-builder/SelectQueryBuilder';
 import type { Repository } from 'typeorm/repository/Repository';
 import { IJsonQueryFilter } from '@entities/ijson-query-filter';
@@ -112,7 +112,8 @@ export interface IGetQueryParams {
   [key: string]: any;
 }
 
-export interface IGetQueryCountParams extends IGetQueryParams {
+export interface IGetQueryCountParams<TEntity> extends IGetQueryParams {
+  repository?: Repository<TEntity>;
   isAllowDistinct?: boolean;
 }
 
@@ -600,23 +601,20 @@ const defaultHandler = <TEntity>(query: TypeormJsonQuery<TEntity>): TypeormJsonQ
  */
 const getQueryCount = async <TEntity>(
   query: SelectQueryBuilder<TEntity>,
-  { hasRemoved = false, cache = 0, isAllowDistinct = false }: IGetQueryCountParams = {},
+  {
+    repository,
+    hasRemoved = false,
+    cache = 0,
+    isAllowDistinct = false,
+  }: IGetQueryCountParams<TEntity> = {},
 ): Promise<CountOutputParams> => {
-  if (!isAllowDistinct) {
-    throw new BaseException({
-      code: CRUD_EXCEPTION_CODE.DISTINCT_SELECT_FORBIDDEN,
-      status: 422,
-      message: 'Distinct select is not allowed.',
-    });
-  }
+  const isDistinctApplied = query.getQuery().includes('DISTINCT');
+  let resultQuery: SelectQueryBuilder<TEntity> = query;
 
   if (hasRemoved) {
     query.withDeleted();
   }
 
-  const isDistinctApplied = query.getQuery().includes('DISTINCT');
-
-  // Check if distinct applied
   if (isDistinctApplied) {
     if (!isAllowDistinct) {
       throw new BaseException({
@@ -626,13 +624,16 @@ const getQueryCount = async <TEntity>(
       });
     }
 
-    // @TODO: add tests
-    query.select(`SELECT COUNT(*)::integer AS count FROM (${query.getQuery()}) AS subquery;`);
+    // Distinct and distinct on complex query data should be wrapped into sub query or cte
+    resultQuery = (repository ?? getManager())
+      .createQueryBuilder()
+      .select('COUNT(sub.*)', 'result')
+      .from(`(${query.getQuery()})`, 'sub');
   }
 
   if (cache) {
     // Disable is only where condition
-    query.cache(
+    resultQuery.cache(
       getCrudCacheKey(query, CACHE_KEYS.count, { hasOnlyWhere: !isDistinctApplied }),
       cache,
     );
@@ -640,7 +641,9 @@ const getQueryCount = async <TEntity>(
 
   return {
     // Returns raw count if distinct enabled
-    count: isDistinctApplied ? (await query.getRawOne())?.count || 0 : await query.getCount(),
+    count: isDistinctApplied
+      ? (await query.getRawOne<{ result: number }>())?.result ?? 0
+      : await query.getCount(),
   };
 };
 
@@ -1199,6 +1202,7 @@ class Endpoint {
           hasRemoved,
           cache,
           isAllowDistinct,
+          repository,
         };
 
         if (result instanceof TypeormJsonQuery) {
