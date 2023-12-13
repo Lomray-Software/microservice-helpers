@@ -1242,10 +1242,7 @@ class Endpoint {
         }
 
         if (query instanceof SelectQueryBuilder) {
-          return {
-            ...(await Endpoint.defaultHandler.count(query, defaultParams)),
-            ...payload,
-          };
+          return { ...(await Endpoint.defaultHandler.count(query, defaultParams)), ...payload };
         }
 
         return { count, ...payload };
