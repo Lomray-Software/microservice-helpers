@@ -524,7 +524,7 @@ const hasEmptyCondition = <TEntity>(query: SelectQueryBuilder<TEntity>): boolean
   }
 
   // condition should contain at least one parameter or equal (number | string)
-  return !/([a-z\s."]+)([!=<>]+|like|is|in)\s?(:|\(:| [0-9]|')/i.test(condition);
+  return !/([a-z\s."]+)([!=<>]+|like|is|in)\s?(:|\(:|[0-9]|')/i.test(condition);
 };
 
 /**
