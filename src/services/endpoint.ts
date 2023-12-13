@@ -112,8 +112,8 @@ export interface IGetQueryParams {
   [key: string]: any;
 }
 
-export interface IGetQueryCountParams extends IGetQueryParams {
-  distinct?: string;
+export interface IGetQueryCountParams<TEntity> extends IGetQueryParams {
+  repository: Repository<TEntity>;
   isAllowDistinct?: boolean;
 }
 
@@ -601,9 +601,48 @@ const defaultHandler = <TEntity>(query: TypeormJsonQuery<TEntity>): TypeormJsonQ
  */
 const getQueryCount = async <TEntity>(
   query: SelectQueryBuilder<TEntity>,
-  { hasRemoved = false, cache = 0, isAllowDistinct = false, distinct }: IGetQueryCountParams = {},
+  {
+    repository,
+    hasRemoved = false,
+    cache = 0,
+    isAllowDistinct = false,
+  }: IGetQueryCountParams<TEntity>,
 ): Promise<CountOutputParams> => {
-  if (!isAllowDistinct && distinct) {
+  if (hasRemoved) {
+    query.withDeleted();
+  }
+
+  if (query.getQuery().includes('DISTINCT')) {
+    return { count: await getQueryCountWithDistinct(query, repository, isAllowDistinct, cache) };
+  }
+
+  return { count: await getQueryCountWithoutDistinct(query, cache) };
+};
+
+/**
+ * Returns count without distinct
+ */
+const getQueryCountWithoutDistinct = <TEntity>(
+  query: SelectQueryBuilder<TEntity>,
+  cache: number,
+): Promise<number> => {
+  if (cache) {
+    query.cache(getCrudCacheKey(query, CACHE_KEYS.count, { hasOnlyWhere: true }), cache);
+  }
+
+  return query.getCount();
+};
+
+/**
+ * Returns count with distinct
+ */
+const getQueryCountWithDistinct = async <TEntity>(
+  query: SelectQueryBuilder<TEntity>,
+  repository: Repository<TEntity>,
+  isAllowDistinct: boolean,
+  cache: number,
+): Promise<number> => {
+  if (!isAllowDistinct) {
     throw new BaseException({
       code: CRUD_EXCEPTION_CODE.DISTINCT_SELECT_FORBIDDEN,
       status: 422,
@@ -611,24 +650,20 @@ const getQueryCount = async <TEntity>(
     });
   }
 
-  if (hasRemoved) {
-    query.withDeleted();
-  }
-
-  // Apply distinct select
-  if (distinct) {
-    query.select(`COUNT(DISTINCT "${distinct}")::integer`, 'count');
-  }
-
   if (cache) {
-    // Disable is only where condition
-    query.cache(getCrudCacheKey(query, CACHE_KEYS.count, { hasOnlyWhere: !distinct }), cache);
+    query.cache(getCrudCacheKey(query, CACHE_KEYS.count, { hasOnlyWhere: false }), cache);
   }
 
-  return {
-    // Returns raw count if distinct enabled
-    count: distinct ? (await query.getRawOne())?.count || 0 : await query.getCount(),
-  };
+  // Build result query
+  const resultQuery = repository.createQueryBuilder().select('COUNT(sub.*)', 'result');
+
+  // Override result query expressions for preventing select from entity and then from sub query
+  resultQuery.expressionMap.aliases = [];
+
+  // Add json query sub query as source
+  resultQuery.from(`(${query.getQuery()})`, 'sub');
+
+  return (await resultQuery.getRawOne<{ result: number }>())?.result ?? 0;
 };
 
 /**
@@ -1181,13 +1216,12 @@ class Endpoint {
           ...queryOptions,
         });
         const result = await handler(typeQuery, params, options);
-        const { hasRemoved, query: iJsonQuery } = params;
+        const { hasRemoved } = params;
         const defaultParams = {
           hasRemoved,
           cache,
           isAllowDistinct,
-          // Check and cast to string from TEntity field
-          ...(typeof iJsonQuery?.distinct === 'string' ? { distinct: iJsonQuery.distinct } : {}),
+          repository,
         };
 
         if (result instanceof TypeormJsonQuery) {
