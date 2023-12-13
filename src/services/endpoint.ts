@@ -7,7 +7,7 @@ import TypeormJsonQuery from '@lomray/typeorm-json-query';
 import { Type, plainToInstance } from 'class-transformer';
 import { IsArray, IsBoolean, IsNumber, IsObject, validate } from 'class-validator';
 import { JSONSchema } from 'class-validator-jsonschema';
-import { DeleteResult, getManager } from 'typeorm';
+import { DeleteResult } from 'typeorm';
 import { SelectQueryBuilder } from 'typeorm/query-builder/SelectQueryBuilder';
 import type { Repository } from 'typeorm/repository/Repository';
 import { IJsonQueryFilter } from '@entities/ijson-query-filter';
@@ -112,7 +112,8 @@ export interface IGetQueryParams {
   [key: string]: any;
 }
 
-export interface IGetQueryCountParams extends IGetQueryParams {
+export interface IGetQueryCountParams<TEntity> extends IGetQueryParams {
+  repository: Repository<TEntity>;
   isAllowDistinct?: boolean;
 }
 
@@ -600,14 +601,19 @@ const defaultHandler = <TEntity>(query: TypeormJsonQuery<TEntity>): TypeormJsonQ
  */
 const getQueryCount = async <TEntity>(
   query: SelectQueryBuilder<TEntity>,
-  { hasRemoved = false, cache = 0, isAllowDistinct = false }: IGetQueryCountParams,
+  {
+    repository,
+    hasRemoved = false,
+    cache = 0,
+    isAllowDistinct = false,
+  }: IGetQueryCountParams<TEntity>,
 ): Promise<CountOutputParams> => {
   if (hasRemoved) {
     query.withDeleted();
   }
 
   if (query.getQuery().includes('DISTINCT')) {
-    return { count: await getQueryCountWithDistinct(query, isAllowDistinct, cache) };
+    return { count: await getQueryCountWithDistinct(query, repository, isAllowDistinct, cache) };
   }
 
   return { count: await getQueryCountWithoutDistinct(query, cache) };
@@ -632,6 +638,7 @@ const getQueryCountWithoutDistinct = <TEntity>(
  */
 const getQueryCountWithDistinct = async <TEntity>(
   query: SelectQueryBuilder<TEntity>,
+  repository: Repository<TEntity>,
   isAllowDistinct: boolean,
   cache: number,
 ): Promise<number> => {
@@ -647,16 +654,16 @@ const getQueryCountWithDistinct = async <TEntity>(
     query.cache(getCrudCacheKey(query, CACHE_KEYS.count, { hasOnlyWhere: false }), cache);
   }
 
-  return (
-    // Not related to entity manager using for preventing add from entity, from should be sub query
-    (
-      await getManager()
-        .createQueryBuilder()
-        .select('COUNT(sub.*)', 'result')
-        .from(`(${query.getQuery()})`, 'sub')
-        .getRawOne<{ result: number }>()
-    )?.result ?? 0
-  );
+  // Build result query
+  const resultQuery = repository.createQueryBuilder().select('COUNT(sub.*)', 'result');
+
+  // Override result query expressions for preventing select from entity and then from sub query
+  resultQuery.expressionMap.aliases = [];
+
+  // Add json query sub query as source
+  resultQuery.from(`(${query.getQuery()})`, 'sub');
+
+  return (await resultQuery.getRawOne<{ result: number }>())?.result ?? 0;
 };
 
 /**
@@ -1214,6 +1221,7 @@ class Endpoint {
           hasRemoved,
           cache,
           isAllowDistinct,
+          repository,
         };
 
         if (result instanceof TypeormJsonQuery) {
@@ -1234,7 +1242,10 @@ class Endpoint {
         }
 
         if (query instanceof SelectQueryBuilder) {
-          return { ...(await Endpoint.defaultHandler.count(query, defaultParams)), ...payload };
+          return {
+            ...(await Endpoint.defaultHandler.count(query, defaultParams)),
+            ...payload,
+          };
         }
 
         return { count, ...payload };
