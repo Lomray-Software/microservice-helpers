@@ -7,7 +7,7 @@ import TypeormJsonQuery from '@lomray/typeorm-json-query';
 import { Type, plainToInstance } from 'class-transformer';
 import { IsArray, IsBoolean, IsNumber, IsObject, validate } from 'class-validator';
 import { JSONSchema } from 'class-validator-jsonschema';
-import { DeleteResult, getManager } from 'typeorm';
+import { DeleteResult } from 'typeorm';
 import { SelectQueryBuilder } from 'typeorm/query-builder/SelectQueryBuilder';
 import type { Repository } from 'typeorm/repository/Repository';
 import { IJsonQueryFilter } from '@entities/ijson-query-filter';
@@ -113,7 +113,7 @@ export interface IGetQueryParams {
 }
 
 export interface IGetQueryCountParams<TEntity> extends IGetQueryParams {
-  repository?: Repository<TEntity>;
+  repository: Repository<TEntity>;
   isAllowDistinct?: boolean;
 }
 
@@ -525,7 +525,7 @@ const hasEmptyCondition = <TEntity>(query: SelectQueryBuilder<TEntity>): boolean
   }
 
   // condition should contain at least one parameter or equal (number | string)
-  return !/([a-z\s."]+)([!=<>]+|like|is|in)\s?(:|\(:|[0-9]|')/i.test(condition);
+  return !/([a-z\s."]+)([!=<>]+|like|is|in)\s?(:|\(:| [0-9]|')/i.test(condition);
 };
 
 /**
@@ -606,45 +606,63 @@ const getQueryCount = async <TEntity>(
     hasRemoved = false,
     cache = 0,
     isAllowDistinct = false,
-  }: IGetQueryCountParams<TEntity> = {},
+  }: IGetQueryCountParams<TEntity>,
 ): Promise<CountOutputParams> => {
-  const isDistinctApplied = query.getQuery().includes('DISTINCT');
-  let resultQuery: SelectQueryBuilder<TEntity> = query;
-
   if (hasRemoved) {
     query.withDeleted();
   }
 
-  if (isDistinctApplied) {
-    if (!isAllowDistinct) {
-      throw new BaseException({
-        code: CRUD_EXCEPTION_CODE.DISTINCT_SELECT_FORBIDDEN,
-        status: 422,
-        message: 'Distinct select is not allowed.',
-      });
-    }
+  if (query.getQuery().includes('DISTINCT')) {
+    return { count: await getQueryCountWithDistinct(query, repository, isAllowDistinct, cache) };
+  }
 
-    // Distinct and distinct on complex query data should be wrapped into sub query or cte
-    resultQuery = (repository ?? getManager())
-      .createQueryBuilder()
-      .select('COUNT(sub.*)', 'result')
-      .from(`(${query.getQuery()})`, 'sub');
+  return { count: await getQueryCountWithoutDistinct(query, cache) };
+};
+
+/**
+ * Returns count without distinct
+ */
+const getQueryCountWithoutDistinct = <TEntity>(
+  query: SelectQueryBuilder<TEntity>,
+  cache: number,
+): Promise<number> => {
+  if (cache) {
+    query.cache(getCrudCacheKey(query, CACHE_KEYS.count, { hasOnlyWhere: true }), cache);
+  }
+
+  return query.getCount();
+};
+
+/**
+ * Returns count with distinct
+ */
+const getQueryCountWithDistinct = async <TEntity>(
+  query: SelectQueryBuilder<TEntity>,
+  repository: Repository<TEntity>,
+  isAllowDistinct: boolean,
+  cache: number,
+): Promise<number> => {
+  if (!isAllowDistinct) {
+    throw new BaseException({
+      code: CRUD_EXCEPTION_CODE.DISTINCT_SELECT_FORBIDDEN,
+      status: 422,
+      message: 'Distinct select is not allowed.',
+    });
   }
 
   if (cache) {
-    // Disable is only where condition
-    resultQuery.cache(
-      getCrudCacheKey(query, CACHE_KEYS.count, { hasOnlyWhere: !isDistinctApplied }),
-      cache,
-    );
+    query.cache(getCrudCacheKey(query, CACHE_KEYS.count, { hasOnlyWhere: false }), cache);
   }
 
-  return {
-    // Returns raw count if distinct enabled
-    count: isDistinctApplied
-      ? (await query.getRawOne<{ result: number }>())?.result ?? 0
-      : await query.getCount(),
-  };
+  return (
+    (
+      await repository
+        .createQueryBuilder()
+        .select('COUNT(sub.*)', 'result')
+        .from(`(${query.getQuery()})`, 'sub')
+        .getRawOne<{ result: number }>()
+    )?.result ?? 0
+  );
 };
 
 /**
@@ -1198,7 +1216,7 @@ class Endpoint {
         });
         const result = await handler(typeQuery, params, options);
         const { hasRemoved } = params;
-        const defaultParams = {
+        const defaultParams: IGetQueryCountParams<TEntity> = {
           hasRemoved,
           cache,
           isAllowDistinct,
