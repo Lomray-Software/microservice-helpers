@@ -655,7 +655,7 @@ const getQueryCountWithDistinct = async <TEntity>(
   }
 
   // Build result query
-  const resultQuery = repository.createQueryBuilder().select('COUNT(sub.*)', 'result');
+  const resultQuery = repository.createQueryBuilder().select('COUNT(sub.*)::integer', 'result');
 
   // Override result query expressions for preventing select from entity and then from sub query
   resultQuery.expressionMap.aliases = [];
