@@ -110,9 +110,7 @@ describe('services/endpoint', () => {
     it('handler - should return count entities without removed: default handler', async () => {
       defaultHandlerStub.restore();
 
-      const result = await Endpoint.defaultHandler.count(repository.createQueryBuilder(), {
-        repository,
-      });
+      const result = await Endpoint.defaultHandler.count(repository.createQueryBuilder(), {});
 
       expect(TypeormMock.queryBuilder.getCount).to.be.calledOnce;
       expect(result).to.deep.equal({ count: 0 });
@@ -121,7 +119,7 @@ describe('services/endpoint', () => {
     it('handler - should return count entities with removed: default handler', async () => {
       const qb = repository.createQueryBuilder();
       const withDeletedSpy = sandbox.spy(qb, 'withDeleted');
-      const result = await Endpoint.defaultHandler.count(qb, { repository, hasRemoved: true });
+      const result = await Endpoint.defaultHandler.count(qb, { hasRemoved: true });
 
       expect(withDeletedSpy).to.be.calledOnce;
       expect(TypeormMock.queryBuilder.getCount).to.be.calledOnce;
@@ -132,7 +130,6 @@ describe('services/endpoint', () => {
       const qb = repository.createQueryBuilder();
       const result = await Endpoint.defaultHandler.count(qb, {
         isAllowDistinct: false,
-        repository,
       });
 
       const [query, params] = qb.getQueryAndParameters();
@@ -140,6 +137,7 @@ describe('services/endpoint', () => {
       expect(query).to.equal(
         'SELECT "TestEntity"."id" AS "TestEntity_id", "TestEntity"."param" AS "TestEntity_param", "TestEntity"."param2" AS "TestEntity_param2" FROM "test_entity" "TestEntity"',
       );
+      expect(TypeormMock.entityManager.createQueryBuilder).to.calledOnce;
       expect(params).to.deep.equal([]);
       expect(TypeormMock.queryBuilder.getCount).to.be.calledOnce;
       expect(TypeormMock.queryBuilder.getRawOne).to.be.not.called;
@@ -149,7 +147,6 @@ describe('services/endpoint', () => {
     it('handler - should return raw count entities', async () => {
       const qb = repository.createQueryBuilder().select(['id', 'param']).distinctOn(['param']);
       const result = await Endpoint.defaultHandler.count(qb, {
-        repository,
         isAllowDistinct: true,
       });
 
@@ -158,6 +155,7 @@ describe('services/endpoint', () => {
       expect(originalQuery).to.equal(
         'SELECT DISTINCT ON (param) id, param FROM "test_entity" "TestEntity"',
       );
+      expect(TypeormMock.entityManager.createQueryBuilder).to.calledTwice;
       expect(originalParams).to.deep.equal([]);
       expect(TypeormMock.queryBuilder.getCount).to.be.not.called;
       expect(TypeormMock.queryBuilder.getRawOne).to.be.calledOnce;
@@ -169,7 +167,7 @@ describe('services/endpoint', () => {
         await waitResult(
           Endpoint.defaultHandler.count(
             repository.createQueryBuilder().select(['id', 'param']).distinctOn(['param']),
-            { repository },
+            {},
           ),
         ),
       ).to.throw('Distinct select is not allowed.');
@@ -177,7 +175,7 @@ describe('services/endpoint', () => {
 
     it('should run default count handler with query builder: typeorm case - cache', async () => {
       const qb = repository.createQueryBuilder();
-      const res = await Endpoint.defaultHandler.count(qb, { repository, cache: 100 });
+      const res = await Endpoint.defaultHandler.count(qb, { cache: 100 });
 
       expect(TypeormMock.queryBuilder.getCount).to.be.calledOnce;
       expect(qb.expressionMap.cache).to.be.ok;

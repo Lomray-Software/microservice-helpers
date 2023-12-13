@@ -7,7 +7,7 @@ import TypeormJsonQuery from '@lomray/typeorm-json-query';
 import { Type, plainToInstance } from 'class-transformer';
 import { IsArray, IsBoolean, IsNumber, IsObject, validate } from 'class-validator';
 import { JSONSchema } from 'class-validator-jsonschema';
-import { DeleteResult } from 'typeorm';
+import { DeleteResult, getManager } from 'typeorm';
 import { SelectQueryBuilder } from 'typeorm/query-builder/SelectQueryBuilder';
 import type { Repository } from 'typeorm/repository/Repository';
 import { IJsonQueryFilter } from '@entities/ijson-query-filter';
@@ -112,8 +112,7 @@ export interface IGetQueryParams {
   [key: string]: any;
 }
 
-export interface IGetQueryCountParams<TEntity> extends IGetQueryParams {
-  repository: Repository<TEntity>;
+export interface IGetQueryCountParams extends IGetQueryParams {
   isAllowDistinct?: boolean;
 }
 
@@ -601,19 +600,14 @@ const defaultHandler = <TEntity>(query: TypeormJsonQuery<TEntity>): TypeormJsonQ
  */
 const getQueryCount = async <TEntity>(
   query: SelectQueryBuilder<TEntity>,
-  {
-    repository,
-    hasRemoved = false,
-    cache = 0,
-    isAllowDistinct = false,
-  }: IGetQueryCountParams<TEntity>,
+  { hasRemoved = false, cache = 0, isAllowDistinct = false }: IGetQueryCountParams,
 ): Promise<CountOutputParams> => {
   if (hasRemoved) {
     query.withDeleted();
   }
 
   if (query.getQuery().includes('DISTINCT')) {
-    return { count: await getQueryCountWithDistinct(query, repository, isAllowDistinct, cache) };
+    return { count: await getQueryCountWithDistinct(query, isAllowDistinct, cache) };
   }
 
   return { count: await getQueryCountWithoutDistinct(query, cache) };
@@ -638,7 +632,6 @@ const getQueryCountWithoutDistinct = <TEntity>(
  */
 const getQueryCountWithDistinct = async <TEntity>(
   query: SelectQueryBuilder<TEntity>,
-  repository: Repository<TEntity>,
   isAllowDistinct: boolean,
   cache: number,
 ): Promise<number> => {
@@ -655,8 +648,9 @@ const getQueryCountWithDistinct = async <TEntity>(
   }
 
   return (
+    // Not related to entity manager using for preventing add from entity, from should be sub query
     (
-      await repository
+      await getManager()
         .createQueryBuilder()
         .select('COUNT(sub.*)', 'result')
         .from(`(${query.getQuery()})`, 'sub')
@@ -1216,11 +1210,10 @@ class Endpoint {
         });
         const result = await handler(typeQuery, params, options);
         const { hasRemoved } = params;
-        const defaultParams: IGetQueryCountParams<TEntity> = {
+        const defaultParams = {
           hasRemoved,
           cache,
           isAllowDistinct,
-          repository,
         };
 
         if (result instanceof TypeormJsonQuery) {
