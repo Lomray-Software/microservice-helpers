@@ -48,6 +48,26 @@ describe('services/endpoint', () => {
       defaultHandlerStub.resetHistory();
     });
 
+    it('should correctly check is allow distinct option', async () => {
+      const countWithDefaultHandler = Endpoint.count?.(() => ({
+        repository,
+      }));
+
+      const result = await countWithDefaultHandler(
+        {
+          query: { attributes: [{ name: 'param', isDistinct: true }] },
+          payload: { authorization: { filter: { methodOptions: { isAllowDistinct: false } } } },
+        },
+        endpointOptions,
+      );
+
+      const [, params] = defaultHandlerStub.firstCall.args;
+
+      expect(params.isAllowDistinct).to.false;
+      expect(defaultHandlerStub).to.calledOnce;
+      expect(result).to.deep.equal(countResult());
+    });
+
     it('should run default count handler with query builder: typeorm case', async () => {
       const countWithDefaultHandler = Endpoint.count?.(() => ({ repository }));
 

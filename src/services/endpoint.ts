@@ -1208,7 +1208,11 @@ class Endpoint {
   > {
     const countHandler: IReturn<TEntity, TParams, TPayload, CountOutputParams | TResult> =
       async function (params, options) {
-        const { repository, queryOptions, cache, isAllowDistinct } = countOptions();
+        const { repository, queryOptions, cache, isAllowDistinct } = {
+          ...countOptions(),
+          // Provide method options allowance via request payload
+          ...(params.payload?.authorization?.filter?.methodOptions ?? {}),
+        };
         const typeQuery = createTypeQuery(repository.createQueryBuilder(), params, {
           relationOptions: ['*'],
           isDisableOrderBy: true,
