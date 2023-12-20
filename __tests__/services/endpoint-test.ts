@@ -168,7 +168,11 @@ describe('services/endpoint', () => {
     });
 
     it('handler - should return raw count entities', async () => {
-      const qb = repository.createQueryBuilder().select(['id', 'param']).distinctOn(['param']);
+      const qb = repository
+        .createQueryBuilder()
+        .select(['id', 'param'])
+        .distinctOn(['param'])
+        .limit(25);
       const result = await Endpoint.defaultHandler.count(qb, {
         isAllowDistinct: true,
         repository,
@@ -184,6 +188,21 @@ describe('services/endpoint', () => {
       expect(TypeormMock.queryBuilder.getCount).to.be.not.called;
       expect(TypeormMock.queryBuilder.getRawOne).to.be.calledOnce;
       expect(result).to.deep.equal({ count: 0 });
+    });
+
+    it('handler - should reset limit query expressions', async () => {
+      const qb = repository
+        .createQueryBuilder()
+        .select(['id', 'param'])
+        .distinctOn(['param'])
+        .limit(25);
+
+      await Endpoint.defaultHandler.count(qb, {
+        isAllowDistinct: true,
+        repository,
+      });
+
+      expect(qb.expressionMap.limit).to.undefined;
     });
 
     it('handler - should throw error distinct is now allowed', async () => {
