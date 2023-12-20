@@ -657,8 +657,9 @@ const getQueryCountWithDistinct = async <TEntity>(
   // Build result query
   const resultQuery = repository.createQueryBuilder().select('COUNT(sub.*)::integer', 'result');
 
-  // Reset limit of tokens sub select
+  // Reset limit of tokens sub select. Both options required to reset
   query.limit(undefined);
+  query.expressionMap.take = undefined;
 
   /**
    * Override result query expressions for preventing select from entity and then from sub query
