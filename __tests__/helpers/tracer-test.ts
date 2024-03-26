@@ -16,6 +16,6 @@ describe('helpers/tracer', () => {
       IS_OPENTELEMETRY_ENABLE: false,
     } as ITracerConfig);
 
-    expect((console.info as sinon.SinonStub).calledWith('opentelemetry initialized: ')).to.false;
+    expect(console.info as sinon.SinonStub).to.not.calledWith('opentelemetry initialized: ');
   });
 });
