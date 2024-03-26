@@ -12,12 +12,9 @@ describe('helpers/tracer', () => {
   });
 
   it('should not initialize opentelemetry if it is disabled', async () => {
-    // @ts-ignore
-    const constants: ITracerConfig = {
+    await tracer({
       IS_OPENTELEMETRY_ENABLE: false,
-    };
-
-    await tracer(constants);
+    } as ITracerConfig);
 
     expect((console.info as sinon.SinonStub).calledWith('opentelemetry initialized: ')).to.be.false;
   });
