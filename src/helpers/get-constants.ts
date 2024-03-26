@@ -43,6 +43,12 @@ const GetConstants = ({
     IS_ENABLE_GRAFANA_LOG: Boolean(Number(process.env.MS_ENABLE_GRAFANA_LOG || 0)),
     MS_GRAFANA_LOKI_CONFIG: JSON.parse(process.env.MS_GRAFANA_LOKI_CONFIG || 'null'),
     IS_OPENTELEMETRY_ENABLE: Boolean(Number(process.env.MS_OPENTELEMETRY_ENABLE || 0)),
+    IS_DISABLE_OPENTELEMETRY_TRACES: Boolean(
+      Number(process.env.MS_DISABLE_OPENTELEMETRY_TRACES || 0),
+    ),
+    IS_DISABLE_OPENTELEMETRY_METRICS: Boolean(
+      Number(process.env.MS_DISABLE_OPENTELEMETRY_METRICS || 0),
+    ),
     MS_OPENTELEMETRY_OTLP_URL: process.env.MS_OPENTELEMETRY_OTLP_URL,
     IS_OPENTELEMETRY_OTLP_URL_SRV: Boolean(Number(process.env.MS_OPENTELEMETRY_OTLP_URL_SRV || 0)),
     IS_OPENTELEMETRY_DEBUG: Boolean(Number(process.env.MS_OPENTELEMETRY_DEBUG || 0)),

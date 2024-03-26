@@ -25,11 +25,26 @@ type TConstants = Pick<
   | 'MS_OPENTELEMETRY_OTLP_URL'
   | 'IS_OPENTELEMETRY_OTLP_URL_SRV'
   | 'IS_OPENTELEMETRY_DEBUG'
+  | 'IS_DISABLE_OPENTELEMETRY_TRACES'
+  | 'IS_DISABLE_OPENTELEMETRY_METRICS'
 >;
 
 export interface ITracerConfig extends TConstants {
   isGateway?: boolean;
 }
+
+interface IAllServicesStatuses {
+  isAllServicesDisabled: boolean;
+  isAllServicesEnabled: boolean;
+}
+
+/**
+ * Returns the status of all services
+ */
+const getAllServicesStatuses = (servicesOptions: boolean[]): IAllServicesStatuses => ({
+  isAllServicesDisabled: servicesOptions.every((option) => !option),
+  isAllServicesEnabled: servicesOptions.every(Boolean),
+});
 
 /**
  * Initialization opentelemetry
@@ -41,12 +56,19 @@ const tracer = (constants: ITracerConfig): Promise<void> | void => {
     MS_OPENTELEMETRY_OTLP_URL,
     IS_OPENTELEMETRY_OTLP_URL_SRV,
     IS_OPENTELEMETRY_DEBUG,
+    IS_DISABLE_OPENTELEMETRY_TRACES,
+    IS_DISABLE_OPENTELEMETRY_METRICS,
     ENVIRONMENT = 'staging',
     VERSION = '1.0.0',
     isGateway = false,
   } = constants;
 
-  if (!IS_OPENTELEMETRY_ENABLE) {
+  const { isAllServicesDisabled, isAllServicesEnabled } = getAllServicesStatuses([
+    IS_DISABLE_OPENTELEMETRY_TRACES,
+    IS_DISABLE_OPENTELEMETRY_METRICS,
+  ]);
+
+  if (!IS_OPENTELEMETRY_ENABLE || isAllServicesDisabled) {
     return;
   }
 
@@ -78,12 +100,23 @@ const tracer = (constants: ITracerConfig): Promise<void> | void => {
     }
 
     const otlpInstanceId = uuidv4();
-    const exporter = new OTLPMetricExporter({
-      url: getMetricUrl(OTLP_URL),
-    });
-    const traceExporter = new OTLPTraceExporter({
-      url: getTraceUrl(OTLP_URL),
-    });
+
+    // Init services
+    let metricExporter: OTLPMetricExporter | null = null;
+    let traceExporter: OTLPTraceExporter | null = null;
+
+    if (!IS_DISABLE_OPENTELEMETRY_TRACES || isAllServicesEnabled) {
+      traceExporter = new OTLPTraceExporter({
+        url: getTraceUrl(OTLP_URL),
+      });
+    }
+
+    if (!IS_DISABLE_OPENTELEMETRY_METRICS || isAllServicesEnabled) {
+      metricExporter = new OTLPMetricExporter({
+        url: getMetricUrl(OTLP_URL),
+      });
+    }
+
     const sdk = new opentelemetry.NodeSDK({
       instrumentations,
       resource: new Resource({
@@ -92,15 +125,19 @@ const tracer = (constants: ITracerConfig): Promise<void> | void => {
         environment: ENVIRONMENT,
         otlpInstanceId,
       }),
-      metricReader: new PeriodicExportingMetricReader({
-        exporter,
-        exportIntervalMillis: 1000,
+      ...(metricExporter && {
+        metricReader: new PeriodicExportingMetricReader({
+          exporter: metricExporter,
+          exportIntervalMillis: 1000,
+        }),
       }),
-      traceExporter,
+      ...(traceExporter && { traceExporter }),
     });
 
-    // You can also use the shutdown method to gracefully shut down the SDK before process shutdown
-    // or on some operating system signal.
+    /**
+     * You can also use the shutdown method to gracefully shut down the SDK before process shutdown
+     * or on some operating system signal.
+     */
     process.on('SIGTERM', () => {
       sdk
         .shutdown()
@@ -136,13 +173,18 @@ const tracer = (constants: ITracerConfig): Promise<void> | void => {
         setInterval(() => {
           ResolveSrv(MS_OPENTELEMETRY_OTLP_URL)
             .then((url) => {
-              // @ts-ignore
-              exporter['_otlpExporter']['url'] = getMetricUrl(url);
-              // @ts-ignore
-              traceExporter['url'] = getTraceUrl(url);
+              if (metricExporter) {
+                // @ts-ignore
+                metricExporter['_otlpExporter']['url'] = getMetricUrl(url);
+              }
+
+              if (traceExporter) {
+                // @ts-ignore
+                traceExporter['url'] = getTraceUrl(url);
+              }
             })
             .catch((e) => {
-              console.log('Failed resolve OTLP SRV URL: ', e);
+              console.info('Failed resolve OTLP SRV URL: ', e);
             });
         }, 30000);
       }
