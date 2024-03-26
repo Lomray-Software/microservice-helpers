@@ -41,9 +41,9 @@ interface IAllServicesStatuses {
 /**
  * Returns the status of all services
  */
-const getAllServicesStatuses = (servicesOptions: boolean[]): IAllServicesStatuses => ({
-  isAllServicesDisabled: servicesOptions.every((option) => !option),
-  isAllServicesEnabled: servicesOptions.every(Boolean),
+const getAllServicesStatuses = (disabledServicesOptions: boolean[]): IAllServicesStatuses => ({
+  isAllServicesDisabled: disabledServicesOptions.every(Boolean),
+  isAllServicesEnabled: disabledServicesOptions.every((option) => !option),
 });
 
 /**
