@@ -184,7 +184,7 @@ const tracer = (constants: ITracerConfig): Promise<void> | void => {
               }
             })
             .catch((e) => {
-              console.info('Failed resolve OTLP SRV URL: ', e);
+              console.log('Failed resolve OTLP SRV URL: ', e);
             });
         }, 30000);
       }
