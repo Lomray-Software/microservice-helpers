@@ -139,13 +139,10 @@ const tracer = (constants: ITracerConfig): Promise<void> | void => {
      * or on some operating system signal.
      */
     process.on('SIGTERM', () => {
-      sdk
-        .shutdown()
-        .then(
-          () => console.log('opentelemetry shut down successfully.'),
-          (err) => console.log('Error shutting down opentelemetry.', err),
-        )
-        .finally(() => process.exit(0));
+      sdk.shutdown().then(
+        () => console.log('opentelemetry shut down successfully.'),
+        (err) => console.log('Error shutting down opentelemetry.', err),
+      );
     });
 
     try {

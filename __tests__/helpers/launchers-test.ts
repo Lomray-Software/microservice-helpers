@@ -129,7 +129,7 @@ describe('helpers/launchers', () => {
       remoteMiddleware: {
         isEnable: true,
         type: 'server',
-        getRepository: () => ({ this: 'is repository' } as unknown as IMiddlewareRepository),
+        getRepository: () => ({ this: 'is repository' }) as unknown as IMiddlewareRepository,
       },
       remoteConfig: { isDisable: false },
       hooks: {
@@ -167,6 +167,7 @@ describe('helpers/launchers', () => {
 
   it('should throw error if microservice start failed', async () => {
     sandbox.stub(Microservice.getInstance(), 'start').rejects();
+    sandbox.stub(process, 'exit');
 
     const res = start({
       type: 'microservice',

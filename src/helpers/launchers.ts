@@ -13,6 +13,7 @@ import {
   RemoteMiddlewareServer,
 } from '@lomray/microservice-remote-middleware';
 import type { ConnectionOptions } from 'typeorm';
+import closeDbConnections from '@helpers/close-db-connections';
 import CreateDbConnection from '@helpers/create-db-connection';
 import Jobs from '@services/jobs';
 import Log from '@services/log';
@@ -40,6 +41,7 @@ export interface IStartConfig {
     afterCreateMicroservice?: (ms: Microservice | Gateway | Socket) => Promise<void> | void;
     afterInitRemoteMiddleware?: () => Promise<void> | void;
     beforeStart?: () => Promise<void> | void;
+    onExit?: (reason: string, err?: unknown) => Promise<void> | void;
   };
 }
 
@@ -51,6 +53,33 @@ export interface IStartConfigWithDb extends IStartConfig {
 export type IStartConfigSocket<T = IStartConfig | IStartConfigWithDb> = {
   registerRooms?: (ms: Socket) => Promise<void> | void;
 } & T;
+
+/**
+ * Shutdown helper
+ */
+function setupProcessHandlers(
+  shutdown: (reason: string, err?: unknown, exitCode?: number) => Promise<void>,
+) {
+  const off: (() => void)[] = [];
+
+  const add = (
+    ev: NodeJS.Signals | 'uncaughtException' | 'unhandledRejection',
+    fn: (...a: any[]) => void,
+  ) => {
+    process.once(ev, fn);
+
+    off.push(() => {
+      process.off(ev, fn);
+    });
+  };
+
+  add('SIGTERM', () => void shutdown('SIGTERM', undefined, 0));
+  add('SIGINT', () => void shutdown('SIGINT', undefined, 0));
+  add('uncaughtException', (err: Error) => void shutdown('uncaughtException', err, 1));
+  add('unhandledRejection', (reason: unknown) => void shutdown('unhandledRejection', reason, 1));
+
+  return () => off.forEach((fn) => fn());
+}
 
 /**
  * 1. Initialize
@@ -72,8 +101,40 @@ const start = async ({
     afterCreateMicroservice,
     afterInitRemoteMiddleware,
     beforeStart,
+    onExit,
   } = {},
 }: IStartConfig): Promise<void> => {
+  let isStopping = false;
+  let disposeHandlers: (() => void) | undefined;
+
+  /**
+   * Graceful shutdown microservice
+   */
+  const shutdown = async (reason: string, err?: unknown, exitCode = 0): Promise<void> => {
+    if (isStopping) {
+      return;
+    }
+
+    isStopping = true;
+
+    try {
+      if (err) {
+        Log.error(`[shutdown:${reason}]`, err);
+      }
+
+      await onExit?.(reason, err);
+    } catch (e) {
+      Log.error('Shutdown error:', e);
+      exitCode = exitCode || 1;
+    } finally {
+      disposeHandlers?.();
+
+      if (exitCode !== 0) {
+        process.exit(exitCode);
+      }
+    }
+  };
+
   try {
     Log.defaultMeta = {
       ...Log.defaultMeta,
@@ -91,6 +152,8 @@ const start = async ({
     const microservice = (
       type === 'gateway' ? Gateway : type === 'socket' ? Socket : Microservice
     ).create(msOptions, msParams);
+
+    disposeHandlers = setupProcessHandlers(shutdown);
 
     // Enable remote config
     RemoteConfig.init(microservice, {
@@ -148,6 +211,7 @@ const start = async ({
     await microservice.start();
   } catch (e) {
     Log.error('Failed to start microservice:', e);
+    await shutdown('startup_error', e, 1);
 
     throw e;
   }
@@ -167,6 +231,10 @@ const withDbConfig = ({
     afterCreateMicroservice: async (...hookParams) => {
       await CreateDbConnection(dbOptions, shouldUseDbRemoteOptions);
       await config?.hooks?.afterCreateMicroservice?.(...hookParams);
+    },
+    onExit: async (...hookParams) => {
+      await closeDbConnections();
+      await config?.hooks?.onExit?.(...hookParams);
     },
   },
 });

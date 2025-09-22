@@ -24,6 +24,8 @@ export { default as IsValidate } from '@validators/is-validate';
 
 export { default as CreateDbConnection } from '@helpers/create-db-connection';
 
+export { default as CloseDbConnections } from '@helpers/close-db-connections';
+
 export { default as EntityColumns } from '@helpers/entity-columns';
 
 export { default as GetDbConfig } from '@helpers/get-db-config';
